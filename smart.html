@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>배드민턴 게임 매칭 앱</title>
+    <!-- Tailwind CSS를 사용하여 스타일링을 적용합니다. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* PlayerIcon SVG를 위한 기본 스타일 */
+        .player-icon {
+            display: inline-block;
+            margin-right: 0.25rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50 p-4 font-sans">
+    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">배드민턴 게임 매칭</h1>
+            <p class="text-gray-500 mt-2">출석한 회원을 선택하여 게임 순서를 생성하세요.</p>
+        </header>
+
+        <!-- 1. 출석 회원 선택 섹션 -->
+        <section class="mb-8">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">1. 출석 회원 선택</h2>
+            <div id="member-selection-container">
+                <!-- 회원 목록이 여기에 동적으로 추가됩니다. -->
+            </div>
+        </section>
+        
+        <!-- 2. 출석 순서 섹션 -->
+        <section class="mb-8" id="attendance-list-section" style="display:none;">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">2. 출석 순서</h2>
+            <div class="p-4 bg-gray-100 rounded-xl">
+                <ul id="attendance-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></ul>
+            </div>
+        </section>
+
+        <!-- 3. 게임 순서 생성 섹션 -->
+        <section class="mb-8 flex flex-col items-center">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">3. 게임 순서 생성</h2>
+            <div class="flex flex-col sm:flex-row items-center gap-4 w-full justify-center">
+                <div class="flex items-center space-x-2">
+                    <span class="text-gray-700 font-medium">각 인원별</span>
+                    <select id="max-games-select" class="form-select border rounded-md px-3 py-2 text-gray-700 focus:ring-blue-500 focus:border-blue-500">
+                        <!-- 옵션은 JavaScript로 동적 생성 -->
+                    </select>
+                </div>
+                <button id="generate-button" class="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full shadow-lg transition-all duration-300 ease-in-out transform hover:scale-105 active:scale-95 disabled:bg-gray-400 disabled:shadow-none">
+                    게임 순서 생성 (0명)
+                </button>
+                <button id="reset-button" class="w-full sm:w-auto bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-full shadow-lg transition-all duration-300 ease-in-out transform hover:scale-105 active:scale-95">
+                    전체 초기화
+                </button>
+            </div>
+            <p id="error-message" class="text-red-500 mt-4 font-medium" style="display: none;"></p>
+        </section>
+
+        <!-- 4. 게임 순서표 섹션 -->
+        <section class="mb-8">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">4. 게임 순서표</h2>
+            <div id="game-list-container">
+                <div id="no-games-message" class="text-center text-gray-500 p-6 bg-gray-100 rounded-xl">
+                    생성된 게임 순서가 없습니다.
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. 출석 인원별 게임 수 섹션 -->
+        <section>
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">5. 출석 인원별 게임 수</h2>
+            <div id="games-played-section" style="display: none;" class="p-4 bg-gray-100 rounded-xl">
+                <ul id="games-played-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></ul>
+            </div>
+            <div id="no-attendance-message" class="text-center text-gray-500 p-6 bg-gray-100 rounded-xl">
+                출석한 회원이 없습니다.
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        // 회원 아이콘 SVG를 생성하는 함수
+        function createPlayerIcon(gender) {
+            const color = gender === '남' ? 'text-blue-500' : 'text-pink-500';
+            return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-1 ${color}">
+                        <path d="M16 18a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>`;
+        }
+
+        // 등급 점수 산정 규칙에 따라 점수를 계산하는 함수
+        function calculateScore(grade, age, gender) {
+            let score;
+            const gradeMap = { 'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4, 'F': 5, 'G': 6 };
+            
+            if (gender === '남') {
+                score = 30;
+                const gradeIndex = gradeMap[grade];
+                if (gradeIndex === 1) score -= 1.5;
+                else if (gradeIndex === 2) score -= 3.0;
+                else if (gradeIndex > 2) score -= (3 + (gradeIndex - 2) * 2);
+            } else { // gender === '여'
+                score = 26;
+                const gradeIndex = gradeMap[grade];
+                score -= gradeIndex * 2;
+            }
+
+            const decade = Math.floor((age - 20) / 10);
+            const ageDeduction = decade * 2;
+            score -= ageDeduction;
+            
+            return score;
+        }
+
+        // 제공된 이미지 데이터를 기반으로 회원 정보를 배열에 담았습니다.
+        const csvData = [
+            { id: 1, name: '권혁찬', grade: 'B', age: 51, gender: '남' },
+    { id: 2, name: '김상엽', grade: 'C', age: 36, gender: '남' },
+    { id: 3, name: '최성호', grade: 'C', age: 43, gender: '남' },
+    { id: 4, name: '이경래', grade: 'C', age: 51, gender: '남' },
+            { id: 5, name: '김태훈', grade: 'D', age: 25, gender: '남' },
+    { id: 6, name: '윤성대', grade: 'C', age: 64, gender: '남' },
+    { id: 7, name: '서윤종', grade: 'B', age: 43, gender: '여' },
+    { id: 8, name: '이성훈', grade: 'D', age: 33, gender: '남' },
+    { id: 9, name: '최현아', grade: 'B', age: 45, gender: '여' },
+    { id: 10, name: '이광연', grade: 'D', age: 48, gender: '남' },
+    { id: 11, name: '김상인', grade: 'D', age: 48, gender: '남' },
+    { id: 12, name: '이재억', grade: 'D', age: 41, gender: '남' },
+    { id: 13, name: '장규성', grade: 'D', age: 42, gender: '남' },
+    { id: 14, name: '지현준', grade: 'E', age: 27, gender: '남' },
+    { id: 15, name: '김나리', grade: 'E', age: 28, gender: '여' },
+    { id: 16, name: '김재훈', grade: 'E', age: 22, gender: '남' },
+    { id: 17, name: '김종규', grade: 'D', age: 54, gender: '남' },
+    { id: 18, name: '문승진', grade: 'D', age: 50, gender: '남' },
+    { id: 19, name: '박상호', grade: 'D', age: 56, gender: '남' },
+    { id: 20, name: '손민희', grade: 'C', age: 46, gender: '여' },
+    { id: 21, name: '손승국', grade: 'D', age: 58, gender: '남' },
+    { id: 22, name: '이순자', grade: 'D', age: 51, gender: '여' },
+    { id: 23, name: '오규태', grade: 'D', age: 45, gender: '남' },
+    { id: 24, name: '이동훈', grade: 'E', age: 26, gender: '남' },
+    { id: 25, name: '이승현', grade: 'D', age: 53, gender: '남' },
+    { id: 26, name: '임수빈', grade: 'B', age: 43, gender: '여' },
+    { id: 27, name: '문정원', grade: 'C', age: 43, gender: '여' },
+    { id: 28, name: '김재근', grade: 'E', age: 48, gender: '남' },
+    { id: 29, name: '성지현', grade: 'C', age: 50, gender: '여' },
+    { id: 30, name: '김하영', grade: 'C', age: 46, gender: '여' },
+    { id: 31, name: '정창수', grade: 'E', age: 41, gender: '남' },
+    { id: 32, name: '정승환', grade: 'D', age: 53, gender: '남' },
+    { id: 33, name: '고성민', grade: 'E', age: 28, gender: '남' },
+    { id: 34, name: '권영수', grade: 'E', age: 49, gender: '남' },
+    { id: 35, name: '유승우', grade: 'C', age: 48, gender: '남' },
+    { id: 36, name: '이승우', grade: 'B', age: 44, gender: '남' },
+    { id: 37, name: '이정국', grade: 'B', age: 53, gender: '남' },
+    { id: 38, name: '김영희', grade: 'C', age: 41, gender: '여' },
+    { id: 39, name: '김지현', grade: 'D', age: 37, gender: '여' },
+    { id: 40, name: '정영환', grade: 'D', age: 57, gender: '남' },
+    { id: 41, name: '임성훈', grade: 'D', age: 56, gender: '남' },
+    { id: 42, name: '김선우', grade: 'E', age: 43, gender: '남' },
+    { id: 43, name: '김형철', grade: 'D', age: 60, gender: '남' },
+    { id: 44, name: '박진영', grade: 'E', age: 48, gender: '남' },
+    { id: 45, name: '윤지영', grade: 'D', age: 48, gender: '여' },
+    { id: 46, name: '서윤정', grade: 'D', age: 47, gender: '여' },
+    { id: 47, name: '이경숙', grade: 'D', age: 52, gender: '여' },
+    { id: 48, name: '최재용', grade: 'D', age: 52, gender: '남' },
+    { id: 49, name: '한영민', grade: 'D', age: 53, gender: '남' },
+    { id: 50, name: '박선영', grade: 'B', age: 45, gender: '여' },
+    { id: 51, name: '전상민', grade: 'D', age: 52, gender: '남' },
+    { id: 52, name: '정승재', grade: 'D', age: 55, gender: '남' },
+    { id: 53, name: '유지현', grade: 'D', age: 49, gender: '여' },
+    { id: 54, name: '김영철', grade: 'C', age: 46, gender: '남' },
+    { id: 55, name: '김현수', grade: 'D', age: 55, gender: '남' },
+    { id: 56, name: '장경원', grade: 'C', age: 48, gender: '여' },
+    { id: 57, name: '유재민', grade: 'C', age: 41, gender: '남' },
+    { id: 58, name: '신동혁', grade: 'C', age: 40, gender: '남' },
+    { id: 59, name: '박정현', grade: 'E', age: 39, gender: '여' },
+    { id: 60, name: '강석준', grade: 'D', age: 50, gender: '남' },
+    { id: 61, name: '최선희', grade: 'D', age: 49, gender: '여' }
+];
+
+        // 각 회원의 점수를 계산하고 gamesPlayed 속성을 추가합니다.
+        const membersWithScores = csvData.map(member => ({
+            ...member,
+            score: calculateScore(member.grade, member.age, member.gender),
+            gamesPlayed: 0
+        }));
+
+        // 전역 상태 변수
+        let presentMembers = [];
+        let games = [];
+        let maxGamesPerPlayer = 5;
+        const gradeOrder = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+
+        // DOM 요소 캐싱
+        const memberSelectionContainer = document.getElementById('member-selection-container');
+        const attendanceListSection = document.getElementById('attendance-list-section');
+        const attendanceList = document.getElementById('attendance-list');
+        const maxGamesSelect = document.getElementById('max-games-select');
+        const generateButton = document.getElementById('generate-button');
+        const resetButton = document.getElementById('reset-button');
+        const errorMessage = document.getElementById('error-message');
+        const gameListContainer = document.getElementById('game-list-container');
+        const gamesPlayedSection = document.getElementById('games-played-section');
+        const gamesPlayedList = document.getElementById('games-played-list');
+        const noGamesMessage = document.getElementById('no-games-message');
+        const noAttendanceMessage = document.getElementById('no-attendance-message');
+
+        // 함수: 회원 선택 목록을 렌더링합니다.
+        function renderMemberSelection() {
+            // 표시를 위해 회원을 등급과 성별로 그룹화합니다.
+            const groupedMembers = membersWithScores.reduce((acc, member) => {
+                if (!acc[member.grade]) {
+                    acc[member.grade] = { male: [], female: [] };
+                }
+                if (member.gender === '남') {
+                    acc[member.grade].male.push(member);
+                } else {
+                    acc[member.grade].female.push(member);
+                }
+                return acc;
+            }, {});
+
+            // 각 등급 내에서 점수 순으로 정렬합니다.
+            Object.keys(groupedMembers).forEach(grade => {
+                groupedMembers[grade].male.sort((a, b) => b.score - a.score);
+                groupedMembers[grade].female.sort((a, b) => b.score - a.score);
+            });
+            
+            let html = '';
+            gradeOrder.forEach(grade => {
+                const gradeGroup = groupedMembers[grade];
+                if (!gradeGroup || (gradeGroup.male.length === 0 && gradeGroup.female.length === 0)) {
+                    return;
+                }
+                html += `
+                    <div class="mb-6 border-b pb-4">
+                        <h3 class="text-lg font-bold text-gray-700 mb-3">${grade}조</h3>
+                        <div class="flex flex-col md:flex-row gap-6">
+                            <!-- 남성 회원 목록 -->
+                            <div class="md:w-1/2">
+                                <h4 class="text-md font-bold text-blue-600 mb-3">남성</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-100 rounded-xl">
+                                    ${gradeGroup.male.map(member => `
+                                        <label class="flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ease-in-out hover:bg-white hover:shadow-md">
+                                            <input type="checkbox" data-member-id="${member.id}" class="form-checkbox text-blue-600 h-5 w-5 rounded focus:ring-0" ${presentMembers.some(m => m.id === member.id) ? 'checked' : ''}>
+                                            <span class="ml-3 font-medium text-gray-800">
+                                                ${createPlayerIcon(member.gender)}
+                                                ${member.name} (${member.grade}, ${member.age}세, ${member.score.toFixed(1)}점)
+                                            </span>
+                                        </label>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            
+                            <!-- 여성 회원 목록 -->
+                            <div class="md:w-1/2">
+                                <h4 class="text-md font-bold text-pink-600 mb-3">여성</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-100 rounded-xl">
+                                    ${gradeGroup.female.map(member => `
+                                        <label class="flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ease-in-out hover:bg-white hover:shadow-md">
+                                            <input type="checkbox" data-member-id="${member.id}" class="form-checkbox text-blue-600 h-5 w-5 rounded focus:ring-0" ${presentMembers.some(m => m.id === member.id) ? 'checked' : ''}>
+                                            <span class="ml-3 font-medium text-gray-800">
+                                                ${createPlayerIcon(member.gender)}
+                                                ${member.name} (${member.grade}, ${member.age}세, ${member.score.toFixed(1)}점)
+                                            </span>
+                                        </label>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            memberSelectionContainer.innerHTML = html;
+        }
+
+        // 함수: 출석 순서를 렌더링합니다.
+        function renderAttendanceList() {
+            if (presentMembers.length > 0) {
+                attendanceListSection.style.display = 'block';
+                const listItems = presentMembers.map((member, index) => `
+                    <li class="p-3 bg-white rounded-lg shadow-sm flex items-center">
+                        <span class="font-bold text-gray-600 mr-2">${index + 1}.</span>
+                        <span class="text-gray-800 flex-1">
+                            ${createPlayerIcon(member.gender)} ${member.name}
+                        </span>
+                    </li>
+                `).join('');
+                attendanceList.innerHTML = listItems;
+            } else {
+                attendanceListSection.style.display = 'none';
+            }
+        }
+
+        // 함수: 게임 순서를 렌더링합니다.
+        function renderGameList() {
+            if (games.length > 0) {
+                noGamesMessage.style.display = 'none';
+                const gameHtml = games.map(game => `
+                    <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200 transition-opacity duration-300 ${game.completed ? 'opacity-50' : ''}">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-lg font-bold text-gray-800">
+                                <span class="bg-blue-100 text-blue-800 text-sm font-semibold mr-2 px-2.5 py-0.5 rounded-full">
+                                    제 ${game.gameNumber} 경기
+                                </span>
+                                <span class="text-gray-600">(${game.gameType})</span>
+                            </h3>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox" class="form-checkbox h-5 w-5 text-green-500 rounded-full focus:ring-0 game-complete-checkbox" data-game-number="${game.gameNumber}" ${game.completed ? 'checked' : ''}>
+                                <span class="ml-2 text-sm text-gray-700 font-medium">완료</span>
+                            </label>
+                        </div>
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-4">
+                            <div class="flex flex-col mb-4 sm:mb-0 sm:w-1/2">
+                                <div class="flex items-center mb-2">
+                                    <span class="font-bold text-gray-700">팀 A</span>
+                                    <span class="text-sm text-gray-500 ml-2"> (합산 점수: ${(game.teamA[0].score + game.teamA[1].score).toFixed(1)}점)</span>
+                                </div>
+                                <ul class="list-disc list-inside mt-1 space-y-1">
+                                    ${game.teamA.map(p => `
+                                        <li class="text-gray-600">
+                                            ${createPlayerIcon(p.gender)} ${p.name} (${p.grade}, ${p.age}세, ${p.score.toFixed(1)}점, 출석 ${p.attendanceOrder}번)
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            </div>
+                            <div class="text-2xl font-black text-gray-400 sm:w-auto">VS</div>
+                            <div class="flex flex-col sm:w-1/2 mt-4 sm:mt-0 text-left sm:text-right">
+                                <div class="flex items-center mb-2 justify-start sm:justify-end">
+                                    <span class="font-bold text-gray-700">팀 B</span>
+                                    <span class="text-sm text-gray-500 ml-2"> (합산 점수: ${(game.teamB[0].score + game.teamB[1].score).toFixed(1)}점)</span>
+                                </div>
+                                <ul class="list-disc list-inside mt-1 space-y-1 text-left">
+                                    ${game.teamB.map(p => `
+                                        <li class="text-gray-600">
+                                            ${createPlayerIcon(p.gender)} ${p.name} (${p.grade}, ${p.age}세, ${p.score.toFixed(1)}점, 출석 ${p.attendanceOrder}번)
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                gameListContainer.innerHTML = gameHtml;
+            } else {
+                noGamesMessage.style.display = 'block';
+                gameListContainer.innerHTML = `<div id="no-games-message" class="text-center text-gray-500 p-6 bg-gray-100 rounded-xl">생성된 게임 순서가 없습니다.</div>`;
+            }
+        }
+
+        // 함수: 출석 인원별 게임 수를 렌더링합니다.
+        function renderGamesPlayedList() {
+            if (presentMembers.length > 0) {
+                gamesPlayedSection.style.display = 'block';
+                noAttendanceMessage.style.display = 'none';
+
+                const totalGamesPlayed = {};
+                games.filter(g => g.completed).forEach(game => {
+                    game.teamA.forEach(p => totalGamesPlayed[p.id] = (totalGamesPlayed[p.id] || 0) + 1);
+                    game.teamB.forEach(p => totalGamesPlayed[p.id] = (totalGamesPlayed[p.id] || 0) + 1);
+                });
+                
+                const presentMembersWithGamesPlayed = presentMembers.map((member, index) => ({
+                    ...member,
+                    attendanceOrder: index + 1,
+                    gamesPlayed: totalGamesPlayed[member.id] || 0
+                }));
+                
+                const listItems = presentMembersWithGamesPlayed.sort((a, b) => a.attendanceOrder - b.attendanceOrder).map(member => `
+                    <li class="p-3 bg-white rounded-lg shadow-sm flex items-center justify-between">
+                        <span class="text-gray-800 font-medium">
+                            <span class="font-bold text-gray-600 mr-1">${member.attendanceOrder}.</span>
+                            ${createPlayerIcon(member.gender)} ${member.name}
+                        </span>
+                        <span class="font-bold text-lg text-blue-600">
+                            ${member.gamesPlayed} 게임
+                        </span>
+                    </li>
+                `).join('');
+                gamesPlayedList.innerHTML = listItems;
+            } else {
+                gamesPlayedSection.style.display = 'none';
+                noAttendanceMessage.style.display = 'block';
+            }
+        }
+        
+        // 함수: 모든 UI를 업데이트합니다.
+        function updateUI() {
+            renderMemberSelection();
+            renderAttendanceList();
+            renderGameList();
+            renderGamesPlayedList();
+            generateButton.textContent = `게임 순서 생성 (${presentMembers.length}명)`;
+            generateButton.disabled = presentMembers.length < 4;
+        }
+
+        // 이벤트 핸들러: 출석 회원 토글
+        function handleTogglePresent(memberId) {
+            const member = membersWithScores.find(m => m.id === memberId);
+            const index = presentMembers.findIndex(m => m.id === memberId);
+            if (index > -1) {
+                presentMembers.splice(index, 1);
+            } else {
+                presentMembers.push(member);
+            }
+            updateUI();
+        }
+
+        // 이벤트 핸들러: 게임 완료 토글
+        function handleGameComplete(gameNumber) {
+            const gameIndex = games.findIndex(g => g.gameNumber === gameNumber);
+            if (gameIndex > -1) {
+                games[gameIndex].completed = !games[gameIndex].completed;
+            }
+            updateUI();
+        }
+        
+        // 이벤트 핸들러: 전체 초기화
+        function handleResetAll() {
+            presentMembers = [];
+            games = [];
+            maxGamesPerPlayer = 5;
+            errorMessage.style.display = 'none';
+            maxGamesSelect.value = 5;
+            updateUI();
+        }
+
+        // 이벤트 핸들러: 게임 순서 생성
+        function generateGameSchedule() {
+            errorMessage.style.display = 'none';
+            generateButton.textContent = '게임 생성 중...';
+            generateButton.disabled = true;
+
+            const completedGames = games.filter(g => g.completed);
+            const gamesPlayedMap = new Map();
+            presentMembers.forEach(member => gamesPlayedMap.set(member.id, 0));
+            
+            completedGames.forEach(game => {
+                game.teamA.forEach(p => gamesPlayedMap.set(p.id, (gamesPlayedMap.get(p.id) || 0) + 1));
+                game.teamB.forEach(p => gamesPlayedMap.set(p.id, (gamesPlayedMap.get(p.id) || 0) + 1));
+            });
+
+            const playersToMatch = presentMembers.map((member, index) => ({
+                ...member,
+                attendanceOrder: index + 1,
+                gamesPlayed: gamesPlayedMap.get(member.id) || 0
+            }));
+
+            const availablePlayers = playersToMatch.filter(p => p.gamesPlayed < maxGamesPerPlayer);
+
+            if (availablePlayers.length < 4) {
+                errorMessage.textContent = '새로운 게임을 생성할 수 있는 인원이 부족합니다.';
+                errorMessage.style.display = 'block';
+                generateButton.textContent = `게임 순서 생성 (${presentMembers.length}명)`;
+                generateButton.disabled = false;
+                return;
+            }
+
+            let newGames = [];
+            const playedPairs = new Set();
+            completedGames.forEach(game => {
+                const teamA_pairKey = [game.teamA[0].id, game.teamA[1].id].sort().join('_');
+                const teamB_pairKey = [game.teamB[0].id, game.teamB[1].id].sort().join('_');
+                playedPairs.add(teamA_pairKey);
+                playedPairs.add(teamB_pairKey);
+            });
+
+            let currentPool = [...availablePlayers];
+            let newGameCount = 0;
+            while (currentPool.filter(p => p.gamesPlayed < maxGamesPerPlayer).length >= 4) {
+                currentPool.sort((a,b) => {
+                    if (a.gamesPlayed === b.gamesPlayed) return a.attendanceOrder - b.attendanceOrder;
+                    return a.gamesPlayed - b.gamesPlayed;
+                });
+
+                const playerPoolForNextGame = currentPool.slice(0, 8);
+                
+                let bestPairing = null;
+                let minScoreDiff = Infinity;
+                
+                const combinations = getCombinations(playerPoolForNextGame, 4);
+
+                for (const currentPlayers of combinations) {
+                    const pairings = [
+                        [[currentPlayers[0], currentPlayers[1]], [currentPlayers[2], currentPlayers[3]]],
+                        [[currentPlayers[0], currentPlayers[2]], [currentPlayers[1], currentPlayers[3]]],
+                        [[currentPlayers[0], currentPlayers[3]], [currentPlayers[1], currentPlayers[2]]]
+                    ];
+
+                    for (const pairing of pairings) {
+                        const teamA = pairing[0];
+                        const teamB = pairing[1];
+                        const teamAScore = teamA[0].score + teamA[1].score;
+                        const teamBScore = teamB[0].score + teamB[1].score;
+                        
+                        const scoreDiff = Math.abs(teamAScore - teamBScore);
+                        
+                        const pairAKey = [teamA[0].id, teamA[1].id].sort().join('_');
+                        const pairBKey = [teamB[0].id, teamB[1].id].sort().join('_');
+                        
+                        if (playedPairs.has(pairAKey) || playedPairs.has(pairBKey)) {
+                            continue;
+                        }
+                        
+                        if (scoreDiff <= 2) {
+                            if (scoreDiff < minScoreDiff) {
+                                minScoreDiff = scoreDiff;
+                                bestPairing = { teamA, teamB, players: currentPlayers };
+                            }
+                        }
+                    }
+                }
+                
+                if (!bestPairing) {
+                    minScoreDiff = Infinity;
+                    for (const currentPlayers of combinations) {
+                        const pairings = [
+                            [[currentPlayers[0], currentPlayers[1]], [currentPlayers[2], currentPlayers[3]]],
+                            [[currentPlayers[0], currentPlayers[2]], [currentPlayers[1], currentPlayers[3]]],
+                            [[currentPlayers[0], currentPlayers[3]], [currentPlayers[1], currentPlayers[2]]]
+                        ];
+
+                        for (const pairing of pairings) {
+                            const teamA = pairing[0];
+                            const teamB = pairing[1];
+                            const teamAScore = teamA[0].score + teamA[1].score;
+                            const teamBScore = teamB[0].score + teamB[1].score;
+                            const scoreDiff = Math.abs(teamAScore - teamBScore);
+                            const pairAKey = [teamA[0].id, teamA[1].id].sort().join('_');
+                            const pairBKey = [teamB[0].id, teamB[1].id].sort().join('_');
+                            
+                            if (playedPairs.has(pairAKey) || playedPairs.has(pairBKey)) {
+                                continue;
+                            }
+
+                            if (scoreDiff < minScoreDiff) {
+                                minScoreDiff = scoreDiff;
+                                bestPairing = { teamA, teamB, players: currentPlayers };
+                            }
+                        }
+                    }
+                }
+
+                if (bestPairing) {
+                    const getGameType = (team) => {
+                        const genders = team.map(p => p.gender).sort().join('');
+                        if (genders === '남남') return '남자 복식';
+                        if (genders === '여여') return '여자 복식';
+                        return '혼합 복식';
+                    };
+                    const typeA = getGameType(bestPairing.teamA);
+                    const typeB = getGameType(bestPairing.teamB);
+                    const gameType = (typeA === typeB) ? typeA : `${typeA} vs ${typeB}`;
+
+                    newGameCount++;
+                    newGames.push({
+                        gameNumber: completedGames.length + newGameCount,
+                        teamA: bestPairing.teamA,
+                        teamB: bestPairing.teamB,
+                        gameType,
+                        completed: false,
+                    });
+                    
+                    bestPairing.players.forEach(player => {
+                        const playerIndex = currentPool.findIndex(p => p.id === player.id);
+                        if (playerIndex !== -1) {
+                            currentPool[playerIndex].gamesPlayed++;
+                        }
+                    });
+
+                    const pairAKey = [bestPairing.teamA[0].id, bestPairing.teamA[1].id].sort().join('_');
+                    const pairBKey = [bestPairing.teamB[0].id, bestPairing.teamB[1].id].sort().join('_');
+                    playedPairs.add(pairAKey);
+                    playedPairs.add(pairBKey);
+                } else {
+                    break;
+                }
+            }
+
+            if (newGames.length === 0 && availablePlayers.length >= 4) {
+                errorMessage.textContent = '더 이상 게임을 생성할 수 없습니다. 플레이어 조합이 불균형할 수 있습니다.';
+                errorMessage.style.display = 'block';
+            }
+            
+            games = [...completedGames, ...newGames];
+            updateUI();
+        }
+
+        // 4명 조합을 생성하는 헬퍼 함수
+        function getCombinations(arr, num) {
+            const results = [];
+            if (num === 1) return arr.map(value => [value]);
+            arr.forEach((fixed, index, origin) => {
+                const rest = origin.slice(index + 1);
+                const combinations = getCombinations(rest, num - 1);
+                const attached = combinations.map(combination => [fixed, ...combination]);
+                results.push(...attached);
+            });
+            return results;
+        }
+
+        // 초기화 및 이벤트 리스너 설정
+        window.onload = function() {
+            // 게임 수 선택 드롭다운 생성
+            for (let i = 1; i <= 10; i++) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = `${i} 게임`;
+                maxGamesSelect.appendChild(option);
+            }
+            maxGamesSelect.value = maxGamesPerPlayer;
+
+            // 이벤트 리스너 부착
+            document.addEventListener('change', (e) => {
+                if (e.target.matches('input[type="checkbox"][data-member-id]')) {
+                    handleTogglePresent(Number(e.target.dataset.memberId));
+                }
+                if (e.target.matches('.game-complete-checkbox')) {
+                    handleGameComplete(Number(e.target.dataset.gameNumber));
+                }
+            });
+            maxGamesSelect.addEventListener('change', (e) => {
+                maxGamesPerPlayer = Number(e.target.value);
+            });
+            generateButton.addEventListener('click', generateGameSchedule);
+            resetButton.addEventListener('click', handleResetAll);
+
+            // 초기 UI 렌더링
+            updateUI();
+        };
+    </script>
+</body>
+</html>
